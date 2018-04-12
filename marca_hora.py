@@ -3,6 +3,7 @@ import schedule
 import time
 import sys
 import logging
+import datetime
 from bs4 import BeautifulSoup
 
 
@@ -55,12 +56,21 @@ class MytimesProvider:
         response = self.session.post(self.HOME_URL + 'RegistrarHorario.xhtml', data=payload)
         self.LOGGER.debug("Marca Response: {}".format(response.text))
 
+def is_holyday(dt):
+    r = requests.get('http://dadosbr.github.io/feriados/nacionais.json')
+    dt1 = ('{:02d}'.format(dt.day) + '/' + '{:02d}'.format(dt.month))
+    for elem in r.json():
+        if dt1 == elem['date']:
+            return True
+    return False
 
 def marca_hora():
     LOGGER.info('Iniciando marcacao de hora')
-    provider = MytimesProvider(user, senha)
-    provider.marca_hora()
-
+    if not is_holyday(datetime.datetime.now()):
+        provider = MytimesProvider(user, senha)
+        provider.marca_hora()
+    else:
+        LOGGER.info('Feriado')
 
 if __name__ == '__main__':
 
