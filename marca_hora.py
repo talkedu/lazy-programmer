@@ -1,4 +1,5 @@
 import smtplib
+import urllib3
 import requests
 import schedule
 import time
@@ -6,6 +7,7 @@ import sys
 import logging
 import datetime
 from bs4 import BeautifulSoup
+from smtplib import SMTPException
 
 
 user = 'Coloque seu user aqui'
@@ -17,6 +19,8 @@ LOG_FORMAT = ('%(levelname) -10s %(asctime)s %(name) '
               '-30s: %(message)s')
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, stream=sys.stdout)
 LOGGER = logging.getLogger(__name__)
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class MytimesProvider:
@@ -58,7 +62,7 @@ class MytimesProvider:
         payload = {'frmRegistro': 'frmRegistro', 'frmRegistro:inputJustificativa': '', 'frmRegistro:j_idt33': 'frmRegistro:j_idt33', 'javax.faces.ViewState': view_state}
         response = self.session.post(self.HOME_URL + 'RegistrarHorario.xhtml', data=payload)
         self.LOGGER.debug("Marca Response: {}".format(response.text))
-       
+
 
 class SMTPProvider:
 
@@ -71,12 +75,15 @@ class SMTPProvider:
             self.server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
             self.server.ehlo()
             self.server.login(user, password)
-        except Exception:
-            self.LOGGER.error("Erro ao se conectar no SMTP")
+        except SMTPException as e:
+            self.LOGGER.error("Erro ao se conectar no SMTP", e)
 
     def send_email(self, from_address, to_address, message):
-        self.server.sendmail(from_address, to_address, message)
-        
+        try:
+            self.server.sendmail(from_address, to_address, message)
+        except SMTPException as e:
+            self.LOGGER.error("Erro ao enviar email", e)
+
 
 def is_holyday(dt):
     r = requests.get('http://dadosbr.github.io/feriados/nacionais.json')
@@ -86,16 +93,36 @@ def is_holyday(dt):
             return True
     return False
 
-def marca_hora():
+
+def marca_hora(retry=4):
     LOGGER.info('Iniciando marcacao de hora')
-    if not is_holyday(datetime.datetime.now()):
-        provider = MytimesProvider(user, senha)
-        provider.marca_hora()
-        
+
+    smtp_provider = None
+
+    try:
         smtp_provider = SMTPProvider(user_email, password_email)
-        smtp_provider.send_email(user_email, user_email, "Hora Marcada com Sucesso!")
-    else:
-        LOGGER.info('Feriado')
+        if not is_holyday(datetime.datetime.now()):
+            provider = MytimesProvider(user, senha)
+            provider.marca_hora()
+
+            logging.info('Hora Marcada com Sucesso!')
+            smtp_provider.send_email(user_email, password_email,
+                                     'Hora Marcada com Sucesso!')
+        else:
+            LOGGER.info('Feriado')
+    except Exception as e:
+        logging.error("Erro ao marcar hora", e)
+        if retry > 0:
+            logging.info("Tentando novamente em 10 segundos")
+            time.sleep(10)
+            retry = retry - 1
+            marca_hora(retry)
+        else:
+            logging.info("Atingida a última tentativa")
+            if smtp_provider is not None:
+                smtp_provider.send_email(user_email, user_email,
+                                         'Erro ao marcar hora')
+
 
 if __name__ == '__main__':
 
