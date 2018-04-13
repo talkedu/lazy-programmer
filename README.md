@@ -1,7 +1,10 @@
-# lazy-programmer
+# maraca hora
 
 # Install dependencies
 
-pip install bs4
-pip install schedule
-pip install lxml
+```sh
+	pip install schedule
+	pip install bs4
+	pip install lxml
+```
+
