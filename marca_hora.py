@@ -63,6 +63,9 @@ class MytimesProvider:
         response = self.session.post(self.HOME_URL + 'RegistrarHorario.xhtml', data=payload)
         self.LOGGER.debug("Marca Response: {}".format(response.text))
 
+    def close(self):
+        self.session.close()
+
 
 class SMTPProvider:
 
@@ -84,6 +87,9 @@ class SMTPProvider:
         except SMTPException as e:
             self.LOGGER.error("Erro ao enviar email", e)
 
+    def close(self):
+        self.server.close()
+
 
 def is_holyday(dt):
     r = requests.get('http://dadosbr.github.io/feriados/nacionais.json')
@@ -98,6 +104,7 @@ def marca_hora(retry=4):
     LOGGER.info('Iniciando marcacao de hora')
 
     smtp_provider = None
+    provider = None
 
     try:
         smtp_provider = SMTPProvider(user_email, password_email)
@@ -106,7 +113,7 @@ def marca_hora(retry=4):
             provider.marca_hora()
 
             logging.info('Hora Marcada com Sucesso!')
-            smtp_provider.send_email(user_email, password_email,
+            smtp_provider.send_email(user_email, user_email,
                                      'Hora Marcada com Sucesso!')
         else:
             LOGGER.info('Feriado')
@@ -122,11 +129,17 @@ def marca_hora(retry=4):
             if smtp_provider is not None:
                 smtp_provider.send_email(user_email, user_email,
                                          'Erro ao marcar hora')
+    finally:
+        if smtp_provider is not None:
+            smtp_provider.close()
+        if provider is not None:
+            provider.close()
 
 
 if __name__ == '__main__':
 
     LOGGER.info('Ligando preenche horas')
+
     schedule.every().monday.at("10:00").do(marca_hora)
     schedule.every().monday.at("13:00").do(marca_hora)
     schedule.every().monday.at("14:00").do(marca_hora)
